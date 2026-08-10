@@ -1,0 +1,9 @@
+[package]
+name = "bhyve-dbus"
+version = "0.1.0"
+edition = "2024"
+license = "BSD-2-Clause"
+
+[dependencies]
+tokio = { version = "1.53.1", features = ["full"] }
+zbus = "5.18.0"
