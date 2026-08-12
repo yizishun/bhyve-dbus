@@ -2,10 +2,13 @@ pub struct Console;
 
 pub struct VMInfo {
 	pub name: String,
+	pub device_address: String,
 }
 
 pub struct BhyvegcImage {
-
+	pub vgamode: u32,
+	pub height: u32,
+	pub width: u32
 }
 
 pub struct KeyEvent {
@@ -20,7 +23,8 @@ impl VMInfo {
 	pub async fn vm_info() -> Self {
 		/* TODO: socket */
 		Self {
-			name: "default".to_string()
+			name: "default".to_string(),
+			device_address: "pci/0000/02.0".to_string()
 		}
 	}
 }
