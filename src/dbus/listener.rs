@@ -1,4 +1,3 @@
-use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
 use std::os::unix::net::UnixStream as StdUnixStream;
 use std::time::Duration;
@@ -71,12 +70,15 @@ pub trait Listener {
 }
 
 pub struct ListenerHandler {
-    id: u32,
-	stream: UnixStream
+    console: Console,
 }
 
 impl ListenerHandler {
-    pub fn new(id: u32, fd: OwnedFd) -> Self {
+    pub fn new(console: Console) -> Self {
+        Self { console }
+    }
+
+	pub async fn connect_and_run(&self, fd: OwnedFd) {
         let std_ownedfd = std::os::fd::OwnedFd::from(fd);
 
         let std_stream = StdUnixStream::from(std_ownedfd);
@@ -84,11 +86,7 @@ impl ListenerHandler {
 
         let stream = UnixStream::from_std(std_stream).unwrap();
 
-        Self { id, stream }
-    }
-
-	pub async fn connect_and_run(self) {
-        let conn = Builder::unix_stream(self.stream)
+        let conn = Builder::unix_stream(stream)
             .p2p()
             .build()
             .await
@@ -109,7 +107,7 @@ impl ListenerHandler {
             ticker.tick().await;
 
             if let Err(_e) = ListenerHandler::update_display(
-                self.id,
+                &self,
                 &proxy,
                 &mut pre_image).await {
                     break;
@@ -118,11 +116,12 @@ impl ListenerHandler {
 	}
 
     async fn update_display(
-        id: u32,
+        &self,
         proxy: &ListenerProxy<'_>,
         pre_image: &mut BhyvegcImage,
     ) -> zbus::Result<()> {
-        let gc_update = match Console::console_poll_image(id).await {
+        /* console_poll_image may hang if bhyve find the image is clean. We have skip ticker, so it's fine. */
+        let gc_update = match self.console.console_poll_image().await {
             Ok(update) => update,
             Err(e) => {
                 let _ = proxy.disable().await;

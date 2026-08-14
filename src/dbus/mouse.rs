@@ -1,12 +1,14 @@
 use zbus::interface;
 
+use crate::console::Console;
+
 pub struct MouseInterface {
-	id: u32
+	console: Console
 }
 
 impl MouseInterface {
-    pub fn new(id: u32) -> Self {
-	Self { id }
+    pub fn new(console: Console) -> Self {
+	Self { console }
     }
 }
 

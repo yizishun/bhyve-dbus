@@ -1,6 +1,6 @@
 use sha2::Digest;
 use zbus::interface;
-use crate::console::{Console, VMInfo};
+use crate::{console::Console, sock_manager::RouteTable};
 
 pub struct VMInterface {
 	pub name: String,
@@ -9,8 +9,9 @@ pub struct VMInterface {
 }
 
 impl VMInterface {
-	pub async fn new() -> Self {
-		let vm_info = VMInfo::vm_info().await;
+	pub async fn new(routes: RouteTable) -> Self {
+		let console = Console::new(0, routes).await.unwrap();
+		let vm_info = console.vm_info();
 		let hash: [u8; 16] = sha2::Sha256::digest(&vm_info.name)
 			[..16]
 			.try_into()
@@ -19,7 +20,7 @@ impl VMInterface {
 		Self {
 			name: vm_info.name,
 			uuid: id.to_string(),
-			console_ids: Console::console_ids().await,
+			console_ids: console.console_ids(),
 		}
 	}
 }

@@ -1,15 +1,15 @@
 use zbus::{interface, zvariant::OwnedFd};
 
-use crate::{console::{Console, VMInfo}, dbus::listener::ListenerHandler};
+use crate::{console::Console, dbus::listener::ListenerHandler};
 
 pub struct ConsoleInterface {
-	pub id: u32,
+	pub console: Console
 }
 
 impl ConsoleInterface {
-    pub fn new(id: u32) -> Self {
+    pub fn new(console: Console) -> Self {
 	Self {
-		id,
+		console,
 	}
     }
 }
@@ -17,10 +17,10 @@ impl ConsoleInterface {
 #[interface(name = "org.qemu.Display1.Console")]
 impl ConsoleInterface {
 	async fn register_listener(&self, fd: OwnedFd) {
-		let id = self.id;
-		let listener = ListenerHandler::new(self.id, fd);
+		let console = self.console.clone();
+		let listener = ListenerHandler::new(console);
 		tokio::spawn(async move {
-			listener.connect_and_run().await;
+			listener.connect_and_run(fd).await;
 		});
 	}
 
@@ -42,17 +42,17 @@ impl ConsoleInterface {
 
 	#[zbus(property)]
 	async fn label(&self) -> String {
-		format!("Console_{}", self.id).to_string()
+		format!("Console_{}", self.console.id).to_string()
 	}
 
 	#[zbus(property)]
 	async fn head(&self) -> u32 {
-		self.id
+		self.console.id
 	}
 
 	#[zbus(property)]
 	async fn type_(&self) -> String {
-		let image = Console::console_get_image(self.id).await.unwrap();
+		let image = self.console.console_get_image().await.unwrap();
 		match image.vgamode {
 			0 => "Graphic".to_string(),
 			1 => "Text".to_string(),
@@ -62,18 +62,18 @@ impl ConsoleInterface {
 
 	#[zbus(property)]
 	async fn device_address(&self) -> String {
-		VMInfo::vm_info().await.device_address
+		self.console.device_address.clone()
 	}
 
 	#[zbus(property)]
 	async fn height(&self) -> u32 {
-		let image = Console::console_get_image(self.id).await.unwrap();
+		let image = self.console.console_get_image().await.unwrap();
 		image.height
 	}
 
 	#[zbus(property)]
 	async fn width(&self) -> u32 {
-		let image = Console::console_get_image(self.id).await.unwrap();
+		let image = self.console.console_get_image().await.unwrap();
 		image.width
 	}
 

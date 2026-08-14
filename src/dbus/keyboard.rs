@@ -1,12 +1,14 @@
 use zbus::interface;
 
+use crate::console::Console;
+
 pub struct KeyboardInterface {
-	id: u32
+	console: Console
 }
 
 impl KeyboardInterface {
-    pub fn new(id: u32) -> Self {
-	Self { id }
+    pub fn new(console: Console) -> Self {
+	Self { console }
     }
 }
 
