@@ -5,10 +5,23 @@ pub struct VMInfo {
 	pub device_address: String,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct BhyvegcImage {
 	pub vgamode: u32,
 	pub height: u32,
-	pub width: u32
+	pub width: u32,
+	pub dmabuf: i32
+}
+
+pub struct BhyvegcImageUpdate {
+	pub update: bool,
+	/* the update position, in pixels. */
+	pub x: i32,
+	pub y: i32,
+	/* the update width, height, in pixels. */
+	pub width: i32,
+	pub height: i32,
+	pub image: BhyvegcImage
 }
 
 pub struct KeyEvent {
@@ -17,6 +30,17 @@ pub struct KeyEvent {
 
 pub struct PtrEvent {
 
+}
+
+impl BhyvegcImage {
+    	pub const fn new() -> Self {
+		Self {
+			vgamode: 0,
+			height: 0,
+			width: 0,
+			dmabuf: 0
+		}
+	}
 }
 
 impl VMInfo {
@@ -35,19 +59,19 @@ impl Console {
 		vec!(1)
 	}
 
-	pub async fn console_get_image() -> BhyvegcImage {
+	pub async fn console_poll_image() -> std::io::Result<BhyvegcImageUpdate> {
+		todo!()
+	}
+
+	pub async fn console_get_image() -> std::io::Result<BhyvegcImage> {
+		todo!()
+	}
+
+	pub async fn console_key_event(event: KeyEvent) -> std::io::Result<()> {
 		todo!();
 	}
 
-	pub async fn console_refresh() {
-		todo!();
-	}
-
-	pub async fn console_key_event(event: KeyEvent) {
-		todo!();
-	}
-
-	pub async fn console_ptr_event(event: PtrEvent) {
+	pub async fn console_ptr_event(event: PtrEvent) -> std::io::Result<()> {
 		todo!();
 	}
 }

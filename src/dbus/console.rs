@@ -19,7 +19,7 @@ impl ConsoleInterface {
 	async fn register_listener(&self, fd: OwnedFd) {
 		let id = self.id;
 		tokio::spawn(async move {
-			ListenerHandler::connect(id, fd).await;
+			ListenerHandler::connect_and_run(id, fd).await;
 		});
 	}
 
@@ -51,7 +51,7 @@ impl ConsoleInterface {
 
 	#[zbus(property)]
 	async fn type_(&self) -> String {
-		let image = Console::console_get_image().await;
+		let image = Console::console_get_image().await.unwrap();
 		match image.vgamode {
 			0 => "Graphic".to_string(),
 			1 => "Text".to_string(),
@@ -66,13 +66,13 @@ impl ConsoleInterface {
 
 	#[zbus(property)]
 	async fn height(&self) -> u32 {
-		let image = Console::console_get_image().await;
+		let image = Console::console_get_image().await.unwrap();
 		image.height
 	}
 
 	#[zbus(property)]
 	async fn width(&self) -> u32 {
-		let image = Console::console_get_image().await;
+		let image = Console::console_get_image().await.unwrap();
 		image.width
 	}
 
