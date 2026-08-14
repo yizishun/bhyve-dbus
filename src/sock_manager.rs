@@ -35,11 +35,11 @@ impl SockManager {
 			));
 		}
 		let (conn_event_tx, conn_event_rx) = mpsc::channel(MAX_CONSOLE * 2);
-		for endpoint in &endpoints {
+		for (id, endpoint) in endpoints.iter().enumerate() {
 			let (ctrl_tx, ctrl_rx) = mpsc::channel(MAX_CONSOLE_REQ);
 			let (poll_tx, poll_rx) = mpsc::channel(MAX_CONSOLE_REQ);
-			let mut ctask = CtrlTask::new(&endpoint, conn_event_tx.clone(), ctrl_rx).await?;
-			let mut ptask = PollTask::new(&endpoint, conn_event_tx.clone(), poll_rx).await?;
+			let mut ctask = CtrlTask::new(id as u32, &endpoint, conn_event_tx.clone(), ctrl_rx).await?;
+			let mut ptask = PollTask::new(id as u32, &endpoint, conn_event_tx.clone(), poll_rx).await?;
 			let conn_handle = ConnHandle::new(ctrl_tx, poll_tx);
 
 			tokio::spawn(async move {
@@ -65,8 +65,14 @@ impl SockManager {
 	}
 
 	pub async fn run(&mut self) {
-		/* TODO: check the active connect in a loop, poll the conn_event_rx */
-		todo!()
+		while let Some(m) = self.conn_event_rx.recv().await {
+			self.active_conn -= 1;
+			if self.active_conn == 0 {
+				let _ = self.waker.send(false);
+				break;
+			}
+		}
+
 	}
 
 	pub fn routes(&self) -> RouteTable {

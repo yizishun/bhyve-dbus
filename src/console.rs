@@ -67,7 +67,7 @@ impl Console {
 		let vm_info = rx.await.map_err(|_| std::io::Error::new(
 			std::io::ErrorKind::BrokenPipe,
 			"reply channel closed"
-		))?.unwrap();
+		))??;
 		Ok(Self {
 			id,
 			routes,

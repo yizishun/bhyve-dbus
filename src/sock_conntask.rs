@@ -6,11 +6,13 @@ use tokio::sync::oneshot;
 use crate::console::{BhyvegcImage, BhyvegcImageUpdate, KeyEvent, PtrEvent, VMInfo};
 
 pub struct CtrlTask {
+	id: u32,
 	ctrl_rx: mpsc::Receiver<CtrlOp>,
 	conn_event_tx: mpsc::Sender<ConnEvent>,
 }
 
 pub struct PollTask {
+	id: u32,
 	poll_rx: mpsc::Receiver<PollOp>,
 	conn_event_tx: mpsc::Sender<ConnEvent>,
 }
@@ -55,6 +57,7 @@ impl ConnHandle {
 
 impl CtrlTask {
 	pub async fn new(
+		id: u32,
 		path: &PathBuf,
 		event_tx: mpsc::Sender<ConnEvent>,
 		ctrl_rx: mpsc::Receiver<CtrlOp>,
@@ -62,13 +65,14 @@ impl CtrlTask {
 		todo!()
 	}
 
-	pub async fn run(& mut self) {
+	pub async fn run(&mut self) {
 		todo!()
 	}
 }
 
 impl PollTask {
 	pub async fn new(
+		id: u32,
 		path: &PathBuf,
 		event_tx: mpsc::Sender<ConnEvent>,
 		poll_rx: mpsc::Receiver<PollOp>,
