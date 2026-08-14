@@ -59,19 +59,19 @@ impl Console {
 		vec!(1)
 	}
 
-	pub async fn console_poll_image() -> std::io::Result<BhyvegcImageUpdate> {
+	pub async fn console_poll_image(id: u32) -> std::io::Result<BhyvegcImageUpdate> {
 		todo!()
 	}
 
-	pub async fn console_get_image() -> std::io::Result<BhyvegcImage> {
+	pub async fn console_get_image(id: u32) -> std::io::Result<BhyvegcImage> {
 		todo!()
 	}
 
-	pub async fn console_key_event(event: KeyEvent) -> std::io::Result<()> {
+	pub async fn console_key_event(id: u32, event: KeyEvent) -> std::io::Result<()> {
 		todo!();
 	}
 
-	pub async fn console_ptr_event(event: PtrEvent) -> std::io::Result<()> {
+	pub async fn console_ptr_event(id:u32, event: PtrEvent) -> std::io::Result<()> {
 		todo!();
 	}
 }

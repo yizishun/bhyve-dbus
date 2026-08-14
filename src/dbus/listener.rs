@@ -71,11 +71,12 @@ pub trait Listener {
 }
 
 pub struct ListenerHandler {
-	fd: OwnedFd
+    id: u32,
+	stream: UnixStream
 }
 
 impl ListenerHandler {
-	pub async fn connect_and_run(id: u32, fd: OwnedFd) {
+    pub fn new(id: u32, fd: OwnedFd) -> Self {
         let std_ownedfd = std::os::fd::OwnedFd::from(fd);
 
         let std_stream = StdUnixStream::from(std_ownedfd);
@@ -83,7 +84,11 @@ impl ListenerHandler {
 
         let stream = UnixStream::from_std(std_stream).unwrap();
 
-        let conn = Builder::unix_stream(stream)
+        Self { id, stream }
+    }
+
+	pub async fn connect_and_run(self) {
+        let conn = Builder::unix_stream(self.stream)
             .p2p()
             .build()
             .await
@@ -104,6 +109,7 @@ impl ListenerHandler {
             ticker.tick().await;
 
             if let Err(_e) = ListenerHandler::update_display(
+                self.id,
                 &proxy,
                 &mut pre_image).await {
                     break;
@@ -112,10 +118,11 @@ impl ListenerHandler {
 	}
 
     async fn update_display(
+        id: u32,
         proxy: &ListenerProxy<'_>,
         pre_image: &mut BhyvegcImage,
     ) -> zbus::Result<()> {
-        let gc_update = match Console::console_poll_image().await {
+        let gc_update = match Console::console_poll_image(id).await {
             Ok(update) => update,
             Err(e) => {
                 let _ = proxy.disable().await;
