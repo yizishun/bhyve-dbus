@@ -2,6 +2,8 @@
 
 use std::io::{Error, ErrorKind, Result};
 
+use crate::console::{KeyEvent, PtrEvent};
+
 /* Request commands */
 pub const WIRE_CMD_REQ_VM_INFO: u16 = 0x0001;
 pub const WIRE_CMD_REQ_GET_IMAGE: u16 = 0x0002;
@@ -22,6 +24,7 @@ pub const WIRE_FLAG_HAS_FD: u16 = 0x0001;
 pub const WIRE_VM_NAME_MAX: usize = 128;
 pub const WIRE_DEV_ADDR_MAX: usize = 64;
 pub const WIRE_MSG_MAX: usize = 512;
+pub const WIRE_ABUF_MAX: usize = 512;
 
 /* header */
 #[repr(C)]
@@ -83,6 +86,7 @@ pub struct WireRespVmInfo {
 pub struct WireRespGetImage {
 	pub hdr: WireHdr,
 	pub code: u32,
+	pub generation: u32,
 	pub vgamode: u32,
 	pub width: u32,
 	pub height: u32,
@@ -93,6 +97,7 @@ pub struct WireRespGetImage {
 pub struct WireRespPollImage {
 	pub hdr: WireHdr,
 	pub code: u32,
+	pub generation: u32,
 	pub vgamode: u32,
 	pub width: u32,
 	pub height: u32,
@@ -119,8 +124,11 @@ pub struct WireRespPtrEvent {
 pub trait WireMsg: Copy {
 	const CMD: u16;
 
-	fn new_hdr() -> WireHdr {
-		WireHdr { cmd: Self::CMD, flags: 0 }
+	fn new_hdr(flags: Option<u16>) -> WireHdr {
+		WireHdr {
+			cmd: Self::CMD,
+			flags: flags.unwrap_or(0)
+		}
 	}
 
 	fn as_bytes(&self) -> &[u8] {
@@ -161,6 +169,7 @@ pub trait WireMsg: Copy {
 		}
 		Ok(msg)
 	}
+
 }
 
 impl WireMsg for WireReqVmInfo {
@@ -194,10 +203,50 @@ impl WireMsg for WireRespPtrEvent {
 	const CMD: u16 = WIRE_CMD_RESP_PTR_EVENT;
 }
 
+impl WireReqVmInfo {
+	pub fn new() -> Self {
+		Self { hdr: Self::new_hdr(None) }
+	}
+}
+
+impl WireReqGetImage {
+	pub fn new() -> Self {
+		Self { hdr: Self::new_hdr(Some(WIRE_FLAG_HAS_FD)) }
+	}
+}
+
+impl WireReqPollImage {
+	pub fn new() -> Self {
+		Self { hdr: Self::new_hdr(None) }
+	}
+}
+
+impl WireReqKeyEvent {
+	pub fn new(event: KeyEvent) -> Self {
+		Self {
+			hdr: Self::new_hdr(None),
+			down: event.down as u32,
+			keysym: event.keysym,
+			keycode: event.keycode
+		}
+	}
+}
+
+impl WireReqPtrEvent {
+	pub fn new(event: PtrEvent) -> Self {
+		Self {
+			hdr: Self::new_hdr(None),
+			button: event.button,
+			x: event.x,
+			y: event.y
+		}
+	}
+}
+
 /* Map a non-zero wire code (errno-style) to std::io::Error. */
-pub fn wire_code_to_result(code: u32) -> Result<()> {
+pub fn wire_code_to_result<T>(code: u32, value: T) -> Result<T> {
 	if code == 0 {
-		Ok(())
+		Ok(value)
 	} else {
 		Err(Error::from_raw_os_error(code as i32))
 	}

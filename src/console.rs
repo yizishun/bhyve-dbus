@@ -1,6 +1,8 @@
+use std::os::fd::OwnedFd;
+
 use tokio::sync::oneshot;
 
-use crate::{sock_conntask::{ConnHandle, CtrlOp, PollOp}, sock_manager::RouteTable};
+use crate::{sock_conntask::{ConnHandle, ConnOp}, sock_manager::RouteTable};
 
 #[derive(Clone)]
 pub struct Console {
@@ -15,41 +17,59 @@ pub struct VMInfo {
 	pub device_address: String,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct BhyvegcImage {
+	pub vgamode: u32,
+	pub generation: u32,
+	pub height: u32,
+	pub width: u32,
+	pub dmabuf: OwnedFd
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Rect {
+	pub x: i32,
+	pub y: i32,
+	pub width: i32,
+	pub height: i32,
+}
+
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BhyvegcImageUpdate {
+	pub dirty: Rect,
+	pub generation: u32,
 	pub vgamode: u32,
 	pub height: u32,
 	pub width: u32,
-	pub dmabuf: i32
-}
-
-pub struct BhyvegcImageUpdate {
-	pub update: bool,
-	/* the update position, in pixels. */
-	pub x: i32,
-	pub y: i32,
-	/* the update width, height, in pixels. */
-	pub width: i32,
-	pub height: i32,
-	pub image: BhyvegcImage
 }
 
 pub struct KeyEvent {
-
+	pub down: bool,
+	pub keysym: u32,
+	pub keycode: u32,
 }
 
 pub struct PtrEvent {
-
+	pub button: u32,
+	pub x: i32,
+	pub y: i32,
 }
 
-impl BhyvegcImage {
-    	pub const fn new() -> Self {
-		Self {
-			vgamode: 0,
-			height: 0,
-			width: 0,
-			dmabuf: 0
-		}
+impl BhyvegcImageUpdate {
+	pub fn need_update(&self) -> bool {
+		!(self.dirty.height == 0 && self.dirty.width == 0)
+	}
+	
+	pub fn neen_scanout(&self, image: &BhyvegcImage) -> bool {
+		self.height != image.height ||
+		self.width != image.width ||
+		self.vgamode != image.vgamode
+	}
+}
+
+impl VMInfo {
+	pub fn new(name: String, device_address: String) -> Self {
+		Self { name, device_address }
 	}
 }
 
@@ -59,7 +79,7 @@ impl Console {
 		let handle = routes.read().unwrap()
 			.get(id as usize).cloned().unwrap();
 		let (reply, rx) = oneshot::channel();
-		handle.ctrl_tx.send(CtrlOp::VmInfo { reply }).await
+		handle.conn_tx.send(ConnOp::VmInfo { reply }).await
 			.map_err(|_| std::io::Error::new(
 				std::io::ErrorKind::BrokenPipe,
 				"connection closed"
@@ -92,7 +112,7 @@ impl Console {
 	pub async fn console_poll_image(&self) -> std::io::Result<BhyvegcImageUpdate> {
 		let handle = self.get_handle();
 		let (reply, rx) = oneshot::channel();
-		handle.poll_tx.send(PollOp::PollImage { reply }).await
+		handle.conn_tx.send(ConnOp::PollImage { reply }).await
 			.map_err(|_| std::io::Error::new(
 				std::io::ErrorKind::BrokenPipe,
 				"connection closed"
@@ -106,7 +126,7 @@ impl Console {
 	pub async fn console_get_image(&self) -> std::io::Result<BhyvegcImage> {
 		let handle = self.get_handle();
 		let (reply, rx) = oneshot::channel();
-		handle.ctrl_tx.send(CtrlOp::GetImage { reply }).await
+		handle.conn_tx.send(ConnOp::GetImage { reply }).await
 			.map_err(|_| std::io::Error::new(
 				std::io::ErrorKind::BrokenPipe,
 				"connection closed"
@@ -119,21 +139,31 @@ impl Console {
 
 	pub async fn console_key_event(&self, event: KeyEvent) -> std::io::Result<()> {
 		let handle = self.get_handle();
-		handle.ctrl_tx.send(CtrlOp::KeyEvent { event }).await
+		let (reply, rx) = oneshot::channel();
+		handle.conn_tx.send(ConnOp::KeyEvent { event, reply }).await
 			.map_err(|_| std::io::Error::new(
 				std::io::ErrorKind::BrokenPipe,
 				"connection closed"
 			))?;
+		rx.await.map_err(|_| std::io::Error::new(
+			std::io::ErrorKind::BrokenPipe,
+			"reply channel closed"
+		))?;
 		Ok(())
 	}
 
 	pub async fn console_ptr_event(&self, event: PtrEvent) -> std::io::Result<()> {
 		let handle = self.get_handle();
-		handle.ctrl_tx.send(CtrlOp::PtrEvent { event }).await
+		let (reply, rx) = oneshot::channel();
+		handle.conn_tx.send(ConnOp::PtrEvent { event, reply }).await
 			.map_err(|_| std::io::Error::new(
 				std::io::ErrorKind::BrokenPipe,
 				"connection closed"
 			))?;
+		rx.await.map_err(|_| std::io::Error::new(
+			std::io::ErrorKind::BrokenPipe,
+			"reply channel closed"
+		))?;
 		Ok(())
 	}
 

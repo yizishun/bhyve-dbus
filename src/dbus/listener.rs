@@ -1,4 +1,4 @@
-use std::os::fd::BorrowedFd;
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream as StdUnixStream;
 use std::time::Duration;
 
@@ -78,6 +78,7 @@ impl ListenerHandler {
         Self { console }
     }
 
+    /* TODO: only work in 1 console, we need make mult-console subscribe the listener instead of new listener */
 	pub async fn connect_and_run(&self, fd: OwnedFd) {
         let std_ownedfd = std::os::fd::OwnedFd::from(fd);
 
@@ -102,14 +103,14 @@ impl ListenerHandler {
         let mut ticker = interval(refresh_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-        let mut pre_image = BhyvegcImage::new();
+        let mut cache: Option<BhyvegcImage> = None;
         loop {
             ticker.tick().await;
 
             if let Err(_e) = ListenerHandler::update_display(
                 &self,
                 &proxy,
-                &mut pre_image).await {
+                &mut cache).await {
                     break;
             }
         }
@@ -118,9 +119,8 @@ impl ListenerHandler {
     async fn update_display(
         &self,
         proxy: &ListenerProxy<'_>,
-        pre_image: &mut BhyvegcImage,
+        cache: &mut Option<BhyvegcImage>,
     ) -> zbus::Result<()> {
-        /* console_poll_image may hang if bhyve find the image is clean. We have skip ticker, so it's fine. */
         let gc_update = match self.console.console_poll_image().await {
             Ok(update) => update,
             Err(e) => {
@@ -128,33 +128,69 @@ impl ListenerHandler {
                 return Err(e.into());
             }
         };
-        let gc_image = gc_update.image;
+        let need_scanout = match cache {
+            Some(c) if c.generation != gc_update.generation => {
+                *c = match self.console.console_get_image().await {
+                    Ok(image) => image,
+                    Err(e) => {
+                        let _ = proxy.disable().await;
+                        return Err(e.into());
+                    }
+                };
+                true
+            }
+            Some(c) if gc_update.neen_scanout(c) => {
+                c.vgamode = gc_update.vgamode;
+                c.height = gc_update.height;
+                c.width = gc_update.width;
+                true
+            }
+            Some(_) => false,
+            None => {
+                *cache = match self.console.console_get_image().await {
+                    Ok(update) => Some(update),
+                    Err(e) => {
+                        let _ = proxy.disable().await;
+                        return Err(e.into());
+                    }
+                };
+                true
+            }
+        };
 
-        if gc_image != *pre_image {
-            let fd = unsafe {
-                BorrowedFd::borrow_raw(gc_image.dmabuf)
-            };
+        if need_scanout {
+            let c = cache.as_ref().unwrap();
             proxy.scanout_dmabuf(
-                zvariant::Fd::from(fd),
-                gc_image.width,
-                gc_image.height,
-                gc_image.width * 4,
+                zvariant::Fd::from(c.dmabuf.as_fd()),
+                c.width,
+                c.height,
+                /* TODO: */
+                c.width * 4,
+                /* TODO: */
                 0x34325258,
                 0,
                 true)
             .await
             .inspect_err(|e| eprintln!("dbus: listener: scanout fail with: {}", e))?;
         }
-        *pre_image = gc_image;
 
-        if gc_update.update {
+        if need_scanout {
+            let c = cache.as_ref().unwrap();
             proxy.update_dmabuf(
-                gc_update.x,
-                gc_update.y,
-                gc_update.width,
-                gc_update.height)
+                0,
+                0,
+                c.width as i32,
+                c.height as i32)
             .await
-            .inspect_err(|e| eprintln!("dbus: listener: scanout fail with: {}", e))?;
+            .inspect_err(|e| eprintln!("dbus: listener: update fail with: {}", e))?;
+        } else if gc_update.need_update() {
+            proxy.update_dmabuf(
+                gc_update.dirty.x,
+                gc_update.dirty.y,
+                gc_update.dirty.width,
+                gc_update.dirty.height)
+            .await
+            .inspect_err(|e| eprintln!("dbus: listener: update fail with: {}", e))?;
         }
         Ok(())
     }

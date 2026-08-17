@@ -2,7 +2,7 @@ use std::{io::{Error, ErrorKind, Result}, path::PathBuf, sync::{Arc, RwLock}};
 
 use tokio::sync::{mpsc, watch};
 
-use crate::sock_conntask::{ConnEvent, ConnHandle, CtrlTask, PollTask};
+use crate::sock_conntask::{ConnEvent, ConnHandle, ConnTask};
 
 pub type RouteTable = Arc<RwLock<Vec<ConnHandle>>>;
 
@@ -34,19 +34,14 @@ impl SockManager {
 				format!("Endpoints count exceeds MAX_CONSOLE limit ({})", MAX_CONSOLE)
 			));
 		}
-		let (conn_event_tx, conn_event_rx) = mpsc::channel(MAX_CONSOLE * 2);
+		let (conn_event_tx, conn_event_rx) = mpsc::channel(MAX_CONSOLE);
 		for (id, endpoint) in endpoints.iter().enumerate() {
-			let (ctrl_tx, ctrl_rx) = mpsc::channel(MAX_CONSOLE_REQ);
-			let (poll_tx, poll_rx) = mpsc::channel(MAX_CONSOLE_REQ);
-			let mut ctask = CtrlTask::new(id as u32, &endpoint, conn_event_tx.clone(), ctrl_rx).await?;
-			let mut ptask = PollTask::new(id as u32, &endpoint, conn_event_tx.clone(), poll_rx).await?;
-			let conn_handle = ConnHandle::new(ctrl_tx, poll_tx);
+			let (conn_tx, conn_rx) = mpsc::channel(MAX_CONSOLE_REQ);
+			let mut ctask = ConnTask::new(id as u32, &endpoint, conn_event_tx.clone(), conn_rx).await?;
+			let conn_handle = ConnHandle::new(conn_tx);
 
 			tokio::spawn(async move {
 				ctask.run().await;
-			});
-			tokio::spawn(async move {
-				ptask.run().await;
 			});
 
 			routes.push(conn_handle);
@@ -66,6 +61,12 @@ impl SockManager {
 
 	pub async fn run(&mut self) {
 		while let Some(m) = self.conn_event_rx.recv().await {
+			match m {
+				ConnEvent::Dead { console_id } => 
+					eprintln!("sock: socket {} disconnect", 
+						self.endpoints[console_id as usize].to_str().unwrap()),
+			}
+			
 			self.active_conn -= 1;
 			if self.active_conn == 0 {
 				let _ = self.waker.send(false);

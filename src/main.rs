@@ -2,6 +2,7 @@ pub mod console;
 mod dbus;
 mod sock_manager;
 mod sock_conntask;
+mod sock_wire;
 
 use tokio::{spawn, sync::watch, task::JoinHandle};
 use zbus::{Connection, Result};
@@ -30,6 +31,7 @@ async fn main() -> Result<()> {
                 connect = Some(set_up_dbus_server(routes.clone()).await?);
             } else if !has_conn {
                 connect = None;
+                return Ok(());
             }
         }
         Ok(())
