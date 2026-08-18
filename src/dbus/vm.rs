@@ -9,19 +9,19 @@ pub struct VMInterface {
 }
 
 impl VMInterface {
-	pub async fn new(routes: RouteTable) -> Self {
-		let console = Console::new(0, routes).await.unwrap();
-		let vm_info = console.vm_info();
+	pub async fn new(routes: RouteTable) -> std::io::Result<Self> {
+		let console = Console::new(0, routes);
+		let vm_info = console.vm_info().await?;
 		let hash: [u8; 16] = sha2::Sha256::digest(&vm_info.name)
 			[..16]
 			.try_into()
 			.unwrap();
 		let id = uuid::Uuid::from_bytes(hash);
-		Self {
+		Ok(Self {
 			name: vm_info.name,
 			uuid: id.to_string(),
 			console_ids: console.console_ids(),
-		}
+		})
 	}
 }
 

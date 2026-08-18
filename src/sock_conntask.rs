@@ -82,7 +82,8 @@ impl ConnTask {
 			match self.conn_rx.recv().await {
 				None => break,
 				Some(msg_op) => {
-					if self.handle_op(msg_op).await.is_err() {
+					if let Err(e) = self.handle_op(msg_op).await {
+						eprintln!("conn_task: {e}");
 						break;
 					}
 				}
@@ -138,7 +139,7 @@ impl ConnTask {
 			ConnOp::PollImage { reply } => {
 				let req = WireReqPollImage::new();
 				let mut buffer = [0u8; WIRE_MSG_MAX];
-				let len = self.send_and_recv(req, &mut buffer).await?;
+				let (len, fd) = self.send_and_recv_with_ancillary(req, &mut buffer).await?;
 				let resp = WireRespPollImage::from_bytes(&buffer[0..len])?;
 				if resp.code != 0 {
 					let _ = reply.send(Err(Error::from_raw_os_error(resp.code as i32)));
@@ -146,16 +147,19 @@ impl ConnTask {
 				}
 
 				let gc_update = BhyvegcImageUpdate {
-					generation: resp.generation,
-					vgamode: resp.vgamode,
-					height: resp.height,
-					width: resp.width,
 					dirty: Rect {
 						x: resp.dirty_x,
 						y: resp.dirty_y,
 						width: resp.dirty_w,
 						height: resp.dirty_h,
-					}
+					},
+					image: BhyvegcImage {
+						vgamode: resp.vgamode,
+						generation: resp.generation,
+						height: resp.height,
+						width: resp.width,
+						dmabuf: fd
+					},
 				};
 				let _ = reply.send(Ok(gc_update));
 				Ok(())

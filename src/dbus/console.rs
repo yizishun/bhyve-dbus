@@ -19,6 +19,7 @@ impl ConsoleInterface {
 	async fn register_listener(&self, fd: OwnedFd) {
 		let console = self.console.clone();
 		let listener = ListenerHandler::new(console);
+		println!("register_listener");
 		tokio::spawn(async move {
 			listener.connect_and_run(fd).await;
 		});
@@ -62,7 +63,7 @@ impl ConsoleInterface {
 
 	#[zbus(property)]
 	async fn device_address(&self) -> String {
-		self.console.device_address.clone()
+		self.console.vm_info().await.expect("vm info error").device_address
 	}
 
 	#[zbus(property)]

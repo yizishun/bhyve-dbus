@@ -9,11 +9,15 @@ use tokio::time::interval;
 use zbus::zvariant;
 use zbus::{conn::Builder, proxy, zvariant::OwnedFd};
 
-use crate::console::{BhyvegcImage, Console};
+use crate::console::{BhyvegcImage, Console, BhyvegcImageUpdate};
 
-const REFRESH_RATE_HZ: f64 = 60.0;
+const REFRESH_RATE_HZ: f64 = 1000000000.0;
 
-#[proxy(interface = "org.qemu.Display1.Listener", assume_defaults = true)]
+#[proxy(
+    interface = "org.qemu.Display1.Listener", 
+    default_path = "/org/qemu/Display1/Listener",
+    assume_defaults = true
+)]
 pub trait Listener {
     fn cursor_define(
         &self,
@@ -78,7 +82,6 @@ impl ListenerHandler {
         Self { console }
     }
 
-    /* TODO: only work in 1 console, we need make mult-console subscribe the listener instead of new listener */
 	pub async fn connect_and_run(&self, fd: OwnedFd) {
         let std_ownedfd = std::os::fd::OwnedFd::from(fd);
 
@@ -88,6 +91,7 @@ impl ListenerHandler {
         let stream = UnixStream::from_std(std_stream).unwrap();
 
         let conn = Builder::unix_stream(stream)
+            .server(zbus::Guid::generate()).unwrap()
             .p2p()
             .build()
             .await
@@ -107,8 +111,7 @@ impl ListenerHandler {
         loop {
             ticker.tick().await;
 
-            if let Err(_e) = ListenerHandler::update_display(
-                &self,
+            if let Err(_e) = self.update_display(
                 &proxy,
                 &mut cache).await {
                     break;
@@ -128,38 +131,10 @@ impl ListenerHandler {
                 return Err(e.into());
             }
         };
-        let need_scanout = match cache {
-            Some(c) if c.generation != gc_update.generation => {
-                *c = match self.console.console_get_image().await {
-                    Ok(image) => image,
-                    Err(e) => {
-                        let _ = proxy.disable().await;
-                        return Err(e.into());
-                    }
-                };
-                true
-            }
-            Some(c) if gc_update.neen_scanout(c) => {
-                c.vgamode = gc_update.vgamode;
-                c.height = gc_update.height;
-                c.width = gc_update.width;
-                true
-            }
-            Some(_) => false,
-            None => {
-                *cache = match self.console.console_get_image().await {
-                    Ok(update) => Some(update),
-                    Err(e) => {
-                        let _ = proxy.disable().await;
-                        return Err(e.into());
-                    }
-                };
-                true
-            }
-        };
+        let need_scanout = cache.as_ref().map_or(true, |c| gc_update.need_scanout(c));
 
         if need_scanout {
-            let c = cache.as_ref().unwrap();
+            let c = cache.insert(gc_update.image);
             proxy.scanout_dmabuf(
                 zvariant::Fd::from(c.dmabuf.as_fd()),
                 c.width,
@@ -169,21 +144,20 @@ impl ListenerHandler {
                 /* TODO: */
                 0x34325258,
                 0,
-                true)
+                false)
             .await
             .inspect_err(|e| eprintln!("dbus: listener: scanout fail with: {}", e))?;
         }
 
-        if need_scanout {
-            let c = cache.as_ref().unwrap();
-            proxy.update_dmabuf(
-                0,
-                0,
-                c.width as i32,
-                c.height as i32)
-            .await
-            .inspect_err(|e| eprintln!("dbus: listener: update fail with: {}", e))?;
-        } else if gc_update.need_update() {
+        if BhyvegcImageUpdate::need_update(gc_update.dirty) {
+            println!("update!! {} {} {} {} {} {}", 
+                cache.as_ref().unwrap().width,
+                cache.as_ref().unwrap().height,
+                gc_update.dirty.x,
+                gc_update.dirty.y, 
+                gc_update.dirty.width, 
+                gc_update.dirty.height
+            );
             proxy.update_dmabuf(
                 gc_update.dirty.x,
                 gc_update.dirty.y,

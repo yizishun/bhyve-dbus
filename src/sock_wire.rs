@@ -21,7 +21,7 @@ pub const WIRE_CMD_RESP_PTR_EVENT: u16 = 0x8005;
 /* flags */
 pub const WIRE_FLAG_HAS_FD: u16 = 0x0001;
 
-pub const WIRE_VM_NAME_MAX: usize = 128;
+pub const WIRE_VM_NAME_MAX: usize = 256;
 pub const WIRE_DEV_ADDR_MAX: usize = 64;
 pub const WIRE_MSG_MAX: usize = 512;
 pub const WIRE_ABUF_MAX: usize = 512;
@@ -217,7 +217,7 @@ impl WireReqGetImage {
 
 impl WireReqPollImage {
 	pub fn new() -> Self {
-		Self { hdr: Self::new_hdr(None) }
+		Self { hdr: Self::new_hdr(Some(WIRE_FLAG_HAS_FD)) }
 	}
 }
 
