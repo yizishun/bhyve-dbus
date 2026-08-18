@@ -1,24 +1,31 @@
+use tokio::sync::broadcast::{self, Sender};
 use zbus::{interface, zvariant::OwnedFd};
 
-use crate::{console::Console, dbus::listener::ListenerHandler};
+use crate::{console::{BhyvegcImageUpdate, Console}, dbus::listener::{ListenerHandler, poll_loop}};
 
 pub struct ConsoleInterface {
-	pub console: Console
+	pub console: Console,
+	pub poller_tx: Sender<BhyvegcImageUpdate>
 }
 
 impl ConsoleInterface {
     pub fn new(console: Console) -> Self {
-	Self {
-		console,
-	}
+	let (tx, _) = broadcast::channel(16);
+	let console_iface = Self {
+		console: console.clone(),
+		poller_tx: tx.clone()
+	};
+	tokio::spawn(async move {
+		poll_loop(console, tx).await;
+	});
+	console_iface
     }
 }
 
 #[interface(name = "org.qemu.Display1.Console")]
 impl ConsoleInterface {
 	async fn register_listener(&self, fd: OwnedFd) {
-		let console = self.console.clone();
-		let listener = ListenerHandler::new(console);
+		let mut listener = ListenerHandler::new(self.poller_tx.subscribe());
 		println!("register_listener");
 		tokio::spawn(async move {
 			listener.connect_and_run(fd).await;

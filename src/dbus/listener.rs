@@ -3,6 +3,7 @@ use std::os::unix::net::UnixStream as StdUnixStream;
 use std::time::Duration;
 
 use tokio::net::UnixStream;
+use tokio::sync::broadcast;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 
@@ -11,7 +12,7 @@ use zbus::{conn::Builder, proxy, zvariant::OwnedFd};
 
 use crate::console::{BhyvegcImage, Console, BhyvegcImageUpdate};
 
-const REFRESH_RATE_HZ: f64 = 1000000000.0;
+const REFRESH_RATE_HZ: f64 = 60.0;
 
 #[proxy(
     interface = "org.qemu.Display1.Listener", 
@@ -74,15 +75,40 @@ pub trait Listener {
 }
 
 pub struct ListenerHandler {
-    console: Console,
+    poller_rx: broadcast::Receiver<BhyvegcImageUpdate>,
+}
+
+pub async fn poll_loop(console: Console, tx: broadcast::Sender<BhyvegcImageUpdate>) {
+
+    let refresh_interval = Duration::from_secs_f64(1.0 / REFRESH_RATE_HZ);
+    let mut ticker = interval(refresh_interval);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    /* TODO: cache here */
+    loop {
+        ticker.tick().await;
+        if tx.receiver_count() == 0 {
+            continue;
+        }
+
+        match console.console_poll_image().await {
+            Ok(update) => {
+                let _ = tx.send(update);
+            }
+            Err(e) => {
+                eprintln!("console poller: {e}");
+                break;
+            }
+        }
+    }
 }
 
 impl ListenerHandler {
-    pub fn new(console: Console) -> Self {
-        Self { console }
+    pub fn new(rx: broadcast::Receiver<BhyvegcImageUpdate>) -> Self {
+        Self { poller_rx: rx }
     }
 
-	pub async fn connect_and_run(&self, fd: OwnedFd) {
+	pub async fn connect_and_run(&mut self, fd: OwnedFd) {
         let std_ownedfd = std::os::fd::OwnedFd::from(fd);
 
         let std_stream = StdUnixStream::from(std_ownedfd);
@@ -102,19 +128,20 @@ impl ListenerHandler {
             .expect("dbus: listener proxy init fail");
 
 
-        let refresh_interval = Duration::from_secs_f64(1.0 / REFRESH_RATE_HZ);
-
-        let mut ticker = interval(refresh_interval);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
         let mut cache: Option<BhyvegcImage> = None;
         loop {
-            ticker.tick().await;
-
-            if let Err(_e) = self.update_display(
-                &proxy,
-                &mut cache).await {
-                    break;
+            match self.poller_rx.recv().await {
+                Ok(update) => {
+                    if let Err(e) = self.update_display(&proxy, &mut cache, update).await {
+                        eprintln!("listener update fail: {e}");
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    eprintln!("listener: lagged {} frames, resync", n);
+                    cache = None;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
 	}
@@ -123,14 +150,8 @@ impl ListenerHandler {
         &self,
         proxy: &ListenerProxy<'_>,
         cache: &mut Option<BhyvegcImage>,
+        gc_update: BhyvegcImageUpdate
     ) -> zbus::Result<()> {
-        let gc_update = match self.console.console_poll_image().await {
-            Ok(update) => update,
-            Err(e) => {
-                let _ = proxy.disable().await;
-                return Err(e.into());
-            }
-        };
         let need_scanout = cache.as_ref().map_or(true, |c| gc_update.need_scanout(c));
 
         if need_scanout {

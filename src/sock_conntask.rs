@@ -1,6 +1,7 @@
 use std::io::Error;
 use std::io::Result;
 use std::os::fd::OwnedFd;
+use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -130,7 +131,7 @@ impl ConnTask {
 					vgamode: resp.vgamode,
 					generation: resp.generation,
 					height: resp.height,
-					dmabuf: fd
+					dmabuf: Arc::new(fd)
 				};
 
 				let _ = reply.send(Ok(gc_image));
@@ -158,7 +159,7 @@ impl ConnTask {
 						generation: resp.generation,
 						height: resp.height,
 						width: resp.width,
-						dmabuf: fd
+						dmabuf: Arc::new(fd)
 					},
 				};
 				let _ = reply.send(Ok(gc_update));

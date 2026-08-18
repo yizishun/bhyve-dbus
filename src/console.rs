@@ -1,4 +1,4 @@
-use std::os::fd::OwnedFd;
+use std::{os::fd::OwnedFd, sync::Arc};
 
 use tokio::sync::oneshot;
 
@@ -15,12 +15,13 @@ pub struct VMInfo {
 	pub device_address: String,
 }
 
+#[derive(Clone)]
 pub struct BhyvegcImage {
 	pub vgamode: u32,
 	pub generation: u32,
 	pub height: u32,
 	pub width: u32,
-	pub dmabuf: OwnedFd
+	pub dmabuf: Arc<OwnedFd>
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -32,6 +33,7 @@ pub struct Rect {
 }
 
 
+#[derive(Clone)]
 pub struct BhyvegcImageUpdate {
 	pub dirty: Rect,
 	pub image: BhyvegcImage
